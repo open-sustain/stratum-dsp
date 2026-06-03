@@ -10,7 +10,7 @@
 //! 3. Identify key changes when segment keys differ
 //! 4. Report primary key (most common) and key change timestamps
 
-use super::{detector::detect_key, templates::KeyTemplates};
+use super::{detector::detect_key, key_sort_index, templates::KeyTemplates};
 use crate::analysis::result::Key;
 use crate::error::AnalysisError;
 
@@ -142,7 +142,17 @@ pub fn detect_key_changes(
 
     let (primary_key, (count, total_confidence)) = key_counts
         .iter()
-        .max_by_key(|(_, (count, _))| *count)
+        .max_by(|a, b| {
+            a.1 .0
+                .cmp(&b.1 .0)
+                .then_with(|| match (a.1 .1.is_finite(), b.1 .1.is_finite()) {
+                    (true, true) => a.1 .1.total_cmp(&b.1 .1),
+                    (true, false) => std::cmp::Ordering::Greater,
+                    (false, true) => std::cmp::Ordering::Less,
+                    (false, false) => std::cmp::Ordering::Equal,
+                })
+                .then_with(|| key_sort_index(*b.0).cmp(&key_sort_index(*a.0)))
+        })
         .unwrap();
 
     let primary_confidence = total_confidence / *count as f32;

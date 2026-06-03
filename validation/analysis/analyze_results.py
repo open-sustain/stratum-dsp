@@ -17,6 +17,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from validation._paths import find_repo_root, resolve_data_path
+from validation._metrics import key_mirex_summary
 
 
 def find_latest_results_file(results_dir: Path) -> Path:
@@ -62,9 +63,21 @@ def analyze_file(results_file: Path) -> None:
             if ref_gt:
                 acc_gt = sum(1 for r in ref_gt if r["key_match"] == "YES") / len(ref_gt) * 100
                 print(f"Stratum Key accuracy vs GT: {acc_gt:.1f}% (n={len(ref_gt)})")
+                mirex_gt = key_mirex_summary(ref_gt, "key_pred", "key_gt")
+                print(
+                    "Stratum Key MIREX vs GT: "
+                    f"{mirex_gt['weighted_percent']:.1f}% "
+                    f"(correct={mirex_gt['counts']['correct']}, "
+                    f"fifth={mirex_gt['counts']['fifth']}, "
+                    f"relative={mirex_gt['counts']['relative']}, "
+                    f"parallel={mirex_gt['counts']['parallel']}, "
+                    f"other={mirex_gt['counts']['other']})"
+                )
             if ref_tag:
                 acc_tag = sum(1 for r in ref_tag if r["key_match"] == "YES") / len(ref_tag) * 100
                 print(f"Stratum Key agreement vs TAG: {acc_tag:.1f}% (n={len(ref_tag)})")
+                mirex_tag = key_mirex_summary(ref_tag, "key_pred", "key_tag")
+                print(f"Stratum Key MIREX vs TAG: {mirex_tag['weighted_percent']:.1f}%")
         else:
             # Preserve old behavior: many batches have no key GT.
             pass
@@ -194,4 +207,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

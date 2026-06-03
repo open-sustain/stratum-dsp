@@ -2,6 +2,14 @@
 
 This directory contains individual literature review documents for each research paper that informs the algorithms implemented in Stratum DSP. Each document provides a summary, key contributions, relevance to the project, implementation notes, and performance characteristics.
 
+## Refresh Audits
+
+- **[2026 Literature Refresh Audit](REFRESH_AUDIT_2026.md)**
+  - Current audit of additional literature, datasets, and engineering references
+    for BPM, key, beat-grid, waveform, confidence, and evaluation methodology
+  - Separates implementation candidates from already implemented foundations
+  - Records benchmark and backlog implications before deeper algorithm changes
+
 ## Onset Detection
 
 - **[Bello et al. (2005): A Tutorial on Onset Detection in Music Signals](bello_2005_onset_detection_tutorial.md)**
@@ -161,4 +169,3 @@ Each literature review document follows this structure:
 
 **Last Updated**: 2025-01-XX  
 **Purpose**: Reference for Cursor AI and developers implementing audio analysis algorithms
-

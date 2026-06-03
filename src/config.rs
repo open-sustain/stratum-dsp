@@ -1,5 +1,6 @@
 //! Configuration parameters for audio analysis
 
+use crate::error::AnalysisError;
 use crate::features::key::templates::TemplateSet;
 use crate::preprocessing::normalization::NormalizationMethod;
 
@@ -591,6 +592,158 @@ pub struct AnalysisConfig {
     pub enable_ml_refinement: bool,
 }
 
+impl AnalysisConfig {
+    /// Validate public analysis configuration before DSP work starts.
+    ///
+    /// This preserves the existing public config shape while rejecting values
+    /// that can make the pipeline numerically undefined or structurally invalid.
+    /// It intentionally does not enforce sample amplitude range; finite headroom
+    /// policy is a separate product contract.
+    pub fn validate(&self) -> Result<(), AnalysisError> {
+        validate_finite("min_amplitude_db", self.min_amplitude_db)?;
+        validate_finite(
+            "onset_threshold_percentile",
+            self.onset_threshold_percentile,
+        )?;
+        validate_finite_array("onset_consensus_weights", &self.onset_consensus_weights)?;
+        validate_finite("tempogram_multi_res_w512", self.tempogram_multi_res_w512)?;
+        validate_finite("tempogram_multi_res_w256", self.tempogram_multi_res_w256)?;
+        validate_finite("tempogram_multi_res_w1024", self.tempogram_multi_res_w1024)?;
+        validate_finite(
+            "tempogram_multi_res_structural_discount",
+            self.tempogram_multi_res_structural_discount,
+        )?;
+        validate_finite(
+            "tempogram_multi_res_double_time_512_factor",
+            self.tempogram_multi_res_double_time_512_factor,
+        )?;
+        validate_finite(
+            "tempogram_multi_res_margin_threshold",
+            self.tempogram_multi_res_margin_threshold,
+        )?;
+        validate_finite("tempogram_band_low_max_hz", self.tempogram_band_low_max_hz)?;
+        validate_finite("tempogram_band_mid_max_hz", self.tempogram_band_mid_max_hz)?;
+        validate_finite(
+            "tempogram_band_high_max_hz",
+            self.tempogram_band_high_max_hz,
+        )?;
+        validate_finite("tempogram_band_w_full", self.tempogram_band_w_full)?;
+        validate_finite("tempogram_band_w_low", self.tempogram_band_w_low)?;
+        validate_finite("tempogram_band_w_mid", self.tempogram_band_w_mid)?;
+        validate_finite("tempogram_band_w_high", self.tempogram_band_w_high)?;
+        validate_finite(
+            "tempogram_band_support_threshold",
+            self.tempogram_band_support_threshold,
+        )?;
+        validate_finite(
+            "tempogram_band_consensus_bonus",
+            self.tempogram_band_consensus_bonus,
+        )?;
+        validate_finite(
+            "tempogram_novelty_w_spectral",
+            self.tempogram_novelty_w_spectral,
+        )?;
+        validate_finite(
+            "tempogram_novelty_w_energy",
+            self.tempogram_novelty_w_energy,
+        )?;
+        validate_finite("tempogram_novelty_w_hfc", self.tempogram_novelty_w_hfc)?;
+        if let Some(debug_gt_bpm) = self.debug_gt_bpm {
+            validate_finite("debug_gt_bpm", debug_gt_bpm)?;
+        }
+        validate_finite("tempogram_mel_fmin_hz", self.tempogram_mel_fmin_hz)?;
+        validate_finite("tempogram_mel_fmax_hz", self.tempogram_mel_fmax_hz)?;
+        validate_finite("tempogram_mel_weight", self.tempogram_mel_weight)?;
+        validate_finite("legacy_bpm_preferred_min", self.legacy_bpm_preferred_min)?;
+        validate_finite("legacy_bpm_preferred_max", self.legacy_bpm_preferred_max)?;
+        validate_finite("legacy_bpm_soft_min", self.legacy_bpm_soft_min)?;
+        validate_finite("legacy_bpm_soft_max", self.legacy_bpm_soft_max)?;
+        validate_finite(
+            "legacy_bpm_conf_mul_preferred",
+            self.legacy_bpm_conf_mul_preferred,
+        )?;
+        validate_finite("legacy_bpm_conf_mul_soft", self.legacy_bpm_conf_mul_soft)?;
+        validate_finite(
+            "legacy_bpm_conf_mul_extreme",
+            self.legacy_bpm_conf_mul_extreme,
+        )?;
+        validate_finite("min_bpm", self.min_bpm)?;
+        validate_finite("max_bpm", self.max_bpm)?;
+        validate_finite("bpm_resolution", self.bpm_resolution)?;
+        validate_finite("center_frequency", self.center_frequency)?;
+        validate_finite("soft_mapping_sigma", self.soft_mapping_sigma)?;
+        validate_finite("chroma_sharpening_power", self.chroma_sharpening_power)?;
+        validate_finite("key_min_tonalness", self.key_min_tonalness)?;
+        validate_finite("key_tonalness_power", self.key_tonalness_power)?;
+        validate_finite("key_energy_power", self.key_energy_power)?;
+        validate_finite("key_harmonic_mask_power", self.key_harmonic_mask_power)?;
+        validate_finite("key_hpss_mask_power", self.key_hpss_mask_power)?;
+        validate_finite("key_ensemble_kk_weight", self.key_ensemble_kk_weight)?;
+        validate_finite(
+            "key_ensemble_temperley_weight",
+            self.key_ensemble_temperley_weight,
+        )?;
+        validate_finite(
+            "key_multi_scale_min_clarity",
+            self.key_multi_scale_min_clarity,
+        )?;
+        validate_finite_slice("key_multi_scale_weights", &self.key_multi_scale_weights)?;
+        validate_finite(
+            "key_tuning_max_abs_semitones",
+            self.key_tuning_max_abs_semitones,
+        )?;
+        validate_finite(
+            "key_tuning_peak_rel_threshold",
+            self.key_tuning_peak_rel_threshold,
+        )?;
+        validate_finite("key_edge_trim_fraction", self.key_edge_trim_fraction)?;
+        validate_finite("key_segment_min_clarity", self.key_segment_min_clarity)?;
+        validate_finite(
+            "key_mode_third_ratio_margin",
+            self.key_mode_third_ratio_margin,
+        )?;
+        validate_finite(
+            "key_mode_flip_min_score_ratio",
+            self.key_mode_flip_min_score_ratio,
+        )?;
+        validate_finite("key_hpcp_harmonic_decay", self.key_hpcp_harmonic_decay)?;
+        validate_finite("key_hpcp_mag_power", self.key_hpcp_mag_power)?;
+        validate_finite("key_hpcp_bass_fmin_hz", self.key_hpcp_bass_fmin_hz)?;
+        validate_finite("key_hpcp_bass_fmax_hz", self.key_hpcp_bass_fmax_hz)?;
+        validate_finite("key_hpcp_bass_weight", self.key_hpcp_bass_weight)?;
+        validate_finite(
+            "key_minor_leading_tone_bonus_weight",
+            self.key_minor_leading_tone_bonus_weight,
+        )?;
+
+        if self.frame_size == 0 {
+            return Err(invalid_config("frame_size must be greater than 0"));
+        }
+        if self.hop_size == 0 {
+            return Err(invalid_config("hop_size must be greater than 0"));
+        }
+        if !(self.min_bpm > 0.0 && self.max_bpm > self.min_bpm) {
+            return Err(invalid_config("min_bpm must be > 0 and max_bpm > min_bpm"));
+        }
+        if self.bpm_resolution <= 0.0 {
+            return Err(invalid_config("bpm_resolution must be greater than 0"));
+        }
+        if !(0.0..=1.0).contains(&self.onset_threshold_percentile) {
+            return Err(invalid_config(
+                "onset_threshold_percentile must be in [0.0, 1.0]",
+            ));
+        }
+        if self.center_frequency <= 0.0 {
+            return Err(invalid_config("center_frequency must be greater than 0"));
+        }
+        if self.soft_mapping_sigma <= 0.0 {
+            return Err(invalid_config("soft_mapping_sigma must be greater than 0"));
+        }
+
+        Ok(())
+    }
+}
+
 impl Default for AnalysisConfig {
     fn default() -> Self {
         Self {
@@ -740,5 +893,92 @@ impl Default for AnalysisConfig {
             #[cfg(feature = "ml")]
             enable_ml_refinement: false,
         }
+    }
+}
+
+fn validate_finite(field: &str, value: f32) -> Result<(), AnalysisError> {
+    if value.is_finite() {
+        Ok(())
+    } else {
+        Err(invalid_config(format!("{field} must be finite")))
+    }
+}
+
+fn validate_finite_array<const N: usize>(
+    field: &str,
+    values: &[f32; N],
+) -> Result<(), AnalysisError> {
+    validate_finite_slice(field, values)
+}
+
+fn validate_finite_slice(field: &str, values: &[f32]) -> Result<(), AnalysisError> {
+    for (index, value) in values.iter().copied().enumerate() {
+        if !value.is_finite() {
+            return Err(invalid_config(format!("{field}[{index}] must be finite")));
+        }
+    }
+
+    Ok(())
+}
+
+fn invalid_config(message: impl Into<String>) -> AnalysisError {
+    AnalysisError::InvalidInput(format!("Invalid analysis config: {}", message.into()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_invalid_config(config: AnalysisConfig, expected: &str) {
+        match config.validate() {
+            Err(AnalysisError::InvalidInput(message)) => {
+                assert!(
+                    message.contains(expected),
+                    "expected invalid config message to contain {expected:?}, got {message:?}"
+                );
+            }
+            Err(other) => panic!("expected InvalidInput, got {other:?}"),
+            Ok(()) => panic!("expected InvalidInput, got Ok"),
+        }
+    }
+
+    #[test]
+    fn default_config_is_valid() {
+        AnalysisConfig::default().validate().unwrap();
+    }
+
+    #[test]
+    fn config_rejects_non_finite_scalar() {
+        let config = AnalysisConfig {
+            min_bpm: f32::NAN,
+            ..Default::default()
+        };
+
+        assert_invalid_config(config, "min_bpm");
+    }
+
+    #[test]
+    fn config_rejects_non_finite_vector_value() {
+        let config = AnalysisConfig {
+            key_multi_scale_weights: vec![1.0, f32::INFINITY],
+            ..Default::default()
+        };
+
+        assert_invalid_config(config, "key_multi_scale_weights[1]");
+    }
+
+    #[test]
+    fn config_rejects_structurally_invalid_values() {
+        let config = AnalysisConfig {
+            hop_size: 0,
+            ..Default::default()
+        };
+        assert_invalid_config(config, "hop_size");
+
+        let config = AnalysisConfig {
+            max_bpm: AnalysisConfig::default().min_bpm,
+            ..Default::default()
+        };
+        assert_invalid_config(config, "max_bpm");
     }
 }

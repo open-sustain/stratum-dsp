@@ -10,7 +10,7 @@
 //! 89(4), 334-368.
 
 use super::{
-    compute_key_clarity,
+    compare_key_scores_desc, compute_key_clarity, key_sort_index, sort_key_scores_desc,
     templates::{KeyTemplates, TemplateSet},
     KeyDetectionResult,
 };
@@ -178,31 +178,31 @@ pub fn detect_key_weighted(
         .iter()
         .filter_map(|(k, s)| {
             if matches!(k, Key::Major(_)) {
-                Some((k, s))
+                Some((*k, *s))
             } else {
                 None
             }
         })
-        .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
-        .unwrap_or((&Key::Major(0), &0.0));
+        .min_by(compare_key_scores_desc)
+        .unwrap_or((Key::Major(0), 0.0));
     let (top_minor_key, top_minor_score) = scores
         .iter()
         .filter_map(|(k, s)| {
             if matches!(k, Key::Minor(_)) {
-                Some((k, s))
+                Some((*k, *s))
             } else {
                 None
             }
         })
-        .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
-        .unwrap_or((&Key::Minor(0), &0.0));
+        .min_by(compare_key_scores_desc)
+        .unwrap_or((Key::Minor(0), 0.0));
 
     // Apply circle-of-fifths bonus to keys near the top-scoring keys
     let circle_bonus_weight = 0.20; // 20% bonus for adjacent keys (increased from 15%)
     for (k, s) in refined_scores.iter_mut() {
         let (ref_key, ref_score) = match k {
-            Key::Major(_) => (top_major_key, top_major_score),
-            Key::Minor(_) => (top_minor_key, top_minor_score),
+            Key::Major(_) => (&top_major_key, &top_major_score),
+            Key::Minor(_) => (&top_minor_key, &top_minor_score),
         };
 
         if *ref_score > 1e-9 {
@@ -243,7 +243,7 @@ pub fn detect_key_weighted(
     scores = refined_scores;
 
     // Step 2: Sort by score (highest first)
-    scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+    sort_key_scores_desc(&mut scores);
 
     // Step 3: Select best key using weighted top-N voting (if top keys are close)
     // This helps when the best key is only slightly better than alternatives
@@ -256,23 +256,7 @@ pub fn detect_key_weighted(
     let use_weighted_voting =
         second_score >= score_threshold && third_score >= score_threshold * 0.90;
 
-    let final_key = if use_weighted_voting {
-        // Weighted voting: count occurrences of each key in top 3, weighted by score
-        let mut key_votes: std::collections::HashMap<Key, f32> = std::collections::HashMap::new();
-        for (key, score) in scores.iter().take(3) {
-            let vote_weight = *score / best_score; // Normalize by best score
-            *key_votes.entry(*key).or_insert(0.0) += vote_weight;
-        }
-
-        // Select key with highest vote count
-        key_votes
-            .iter()
-            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
-            .map(|(k, _)| *k)
-            .unwrap_or(best_key)
-    } else {
-        best_key
-    };
+    let final_key = best_key;
 
     // Compute confidence for final key
     let final_score = scores
@@ -394,7 +378,7 @@ pub fn detect_key_weighted_mode_heuristic(
     }
 
     // Re-sort with the bonus applied and compute the new best key.
-    scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    sort_key_scores_desc(&mut scores);
     let (best_key, _best_score) = scores[0];
 
     // Build quick score lookup tables for parallel/tonic mode flipping (post-bonus).
@@ -674,7 +658,7 @@ pub fn detect_key_multi_scale(
         }
 
         // Sort and build result
-        acc_scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        sort_key_scores_desc(&mut acc_scores);
         let (best_key, best_score) = acc_scores[0];
         let second_score = if acc_scores.len() > 1 {
             acc_scores[1].1
@@ -785,9 +769,14 @@ pub fn detect_key_median(
             // First by count, then by total confidence
             match a.1 .0.cmp(&b.1 .0) {
                 std::cmp::Ordering::Equal => {
-                    a.1 .1
-                        .partial_cmp(&b.1 .1)
-                        .unwrap_or(std::cmp::Ordering::Equal)
+                    let confidence_order = match (a.1 .1.is_finite(), b.1 .1.is_finite()) {
+                        (true, true) => a.1 .1.total_cmp(&b.1 .1),
+                        (true, false) => std::cmp::Ordering::Greater,
+                        (false, true) => std::cmp::Ordering::Less,
+                        (false, false) => std::cmp::Ordering::Equal,
+                    };
+
+                    confidence_order.then_with(|| key_sort_index(*b.0).cmp(&key_sort_index(*a.0)))
                 }
                 other => other,
             }
@@ -823,7 +812,7 @@ pub fn detect_key_median(
     }
 
     // Sort by aggregate score
-    aggregate_scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    sort_key_scores_desc(&mut aggregate_scores);
 
     // Use median key, but compute confidence from aggregate scores
     let median_score = aggregate_scores
@@ -937,7 +926,7 @@ pub fn detect_key_ensemble(
     }
 
     // Sort by combined score (highest first)
-    combined_scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    sort_key_scores_desc(&mut combined_scores);
 
     // Select best key and compute confidence
     let (best_key, best_score) = combined_scores[0];

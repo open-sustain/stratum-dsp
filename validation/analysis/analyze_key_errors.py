@@ -15,6 +15,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from validation._keys import normalize_key, key_name_to_echonest_key_mode
+from validation._metrics import evaluate_key_mirex
 
 
 def key_to_tonic_mode(key_str: str) -> tuple:
@@ -85,6 +86,7 @@ def main() -> None:
 
     # Circle-of-fifths distance distribution
     cof_distances = defaultdict(int)
+    mirex_categories = defaultdict(int)
 
     for track_id, key_gt, key_pred, is_match in key_rows:
         gt_tonic, gt_mode = key_to_tonic_mode(key_gt)
@@ -92,6 +94,9 @@ def main() -> None:
         
         if gt_tonic is None or pred_tonic is None:
             continue
+
+        mirex = evaluate_key_mirex(key_pred, key_gt)
+        mirex_categories[mirex["category"]] += 1
 
         if is_match:
             correct += 1
@@ -116,6 +121,12 @@ def main() -> None:
     print(f"  Mode errors (same tonic, wrong mode): {mode_errors}")
     print(f"  Tonic errors (wrong tonic, same mode): {tonic_errors}")
     print(f"  Both wrong: {both_wrong}")
+
+    print(f"\nMIREX-style categories:")
+    for category in ("correct", "fifth", "relative", "parallel", "other", "invalid"):
+        count = mirex_categories.get(category, 0)
+        if count:
+            print(f"  {category}: {count}")
 
     print(f"\nCircle-of-fifths distance (tonic errors only):")
     for dist in sorted(cof_distances.keys()):
@@ -144,4 +155,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

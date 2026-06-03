@@ -11,14 +11,8 @@ categories = ["multimedia::audio"]
 readme = "README.md"
 
 [dependencies]
-# Audio I/O
-symphonia = { version = "0.5", features = ["all"] }
-
 # Math & DSP
 rustfft = "6.2"
-
-# ML (Phase 2, optional)
-ort = { version = "2.0.0-rc.10", optional = true }
 
 # Utilities
 serde = { version = "1", features = ["derive"] }
@@ -27,13 +21,29 @@ log = "0.4"
 rayon = "1.8"
 
 [dev-dependencies]
+# Audio I/O for example CLIs
+symphonia = { version = "0.6", default-features = false, features = [
+    "aac",
+    "all-meta",
+    "flac",
+    "isomp4",
+    "mp3",
+    "ogg",
+    "opt-simd",
+    "pcm",
+    "vorbis",
+    "wav",
+] }
 env_logger = "0.11"
 criterion = { version = "0.5", features = ["html_reports"] }
 hound = "3.5"  # WAV file reading for integration tests
 
 [features]
 default = []
-ml = ["ort"]
+# Phase 2 ML integration point. Kept dependency-free while ML modules are stubs.
+ml = []
+# Backward-compatible alias for callers that enabled the old implicit optional-dependency feature.
+ort = []
 
 [package.metadata.docs.rs]
 features = ["default"]
@@ -55,4 +65,3 @@ codegen-units = 1
 [profile.dev]
 opt-level = 0
 debug = true
-

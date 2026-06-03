@@ -18,6 +18,8 @@ import math
 import os
 from collections import Counter, defaultdict
 
+from validation._metrics import TEMPO_RATIO_FACTORS, tempo_ratio_bucket
+
 
 GT_BANDS = [
     ("lt60", 0.0, 60.0),
@@ -29,32 +31,11 @@ GT_BANDS = [
 ]
 
 
-RATIO_BUCKETS = [
-    ("1x", 1.0),
-    ("2x", 2.0),
-    ("1/2x", 0.5),
-    ("3/2x", 1.5),
-    ("2/3x", 2 / 3),
-    ("4/3x", 4 / 3),
-    ("3/4x", 3 / 4),
-]
-
-
 def band_for_gt(gt: float) -> str:
     for name, lo, hi in GT_BANDS:
         if lo <= gt < hi:
             return name
     return "unknown"
-
-
-def ratio_bucket(pred: float, gt: float, tol: float) -> str:
-    if gt <= 0 or pred <= 0:
-        return "N/A"
-    r = pred / gt
-    for name, f in RATIO_BUCKETS:
-        if abs(r - f) <= tol:
-            return name
-    return "other"
 
 
 def fnum(x, default="N/A") -> str:
@@ -88,11 +69,12 @@ def main() -> None:
         r["_pred"] = float(r["bpm_pred"])
         r["_err"] = float(r["bpm_error"])
         r["_band"] = band_for_gt(r["_gt"])
-        r["_ratio_bucket"] = ratio_bucket(r["_pred"], r["_gt"], tol)
+        r["_ratio_bucket"] = tempo_ratio_bucket(r["_pred"], r["_gt"], tol)
         r["_tag_err"] = float(r["bpm_tag_error"]) if r.get("bpm_tag_error", "") != "" else math.nan
 
     print(f"Exemplar report: {os.path.basename(path)}")
     print(f"n={len(rows)}")
+    print("tempo ratio factors: " + ", ".join(f"{name}={factor:.3f}" for name, factor in TEMPO_RATIO_FACTORS))
     print()
 
     # Worst overall
@@ -182,5 +164,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
 

@@ -56,6 +56,21 @@ println!("BPM: {:.1} | Key: {} ({})",
 - `examples/analyze_batch.rs`: parallel batch processing (CPU-1 workers default)
 - `docs/progress-reports/PHASE_1F_BENCHMARKS.md`: batch throughput + outlier analysis
 - `CONTRIBUTING.md`: contributor guidelines and development workflow
+- `validation/benchmarks/`: benchmark corpus registry, manifest rules, and
+  researched candidate corpora for BPM/key/beat-grid/waveform validation.
+- `docs/literature/REFRESH_AUDIT_2026.md`: refreshed literature and source
+  audit for evaluation methodology, datasets, BPM/key/beat-grid, and waveform
+  production references.
+- `validation/_metrics.py`: shared validation metric helpers for BPM ratio buckets
+  and MIREX-style key categories.
+- `validation/_metrics.py`: dependency-free beat/downbeat precision, recall,
+  and F-measure helpers using the mir_eval-compatible default 70 ms tolerance.
+- `generate_waveform`: additive public API for deterministic multi-resolution
+  min/max/RMS/peak waveform envelopes.
+- `docs/WAVEFORM.md`: v1 waveform output contract.
+- `docs/PERFORMANCE_AUDIT_2026.md`: local performance audit notes, Criterion
+  commands, STFT baseline, waveform baselines, and residual profiling risks.
+- Criterion benchmark coverage for direct STFT timing and waveform generation.
 - Validation tooling cleanup:
   - `validation/tools/` (run scripts) and `validation/analysis/` (post-run analysis)
   - `validation/_id3.py`, `validation/_keys.py`: shared ID3/key parsing utilities
@@ -63,6 +78,19 @@ println!("BPM: {:.1} | Key: {} ({})",
 - `archive/`: archived "construction debris" not compiled as part of the crate
 
 ### Changed
+- Moved `symphonia` from normal dependencies to dev-dependencies because audio
+  decoding is used only by example CLIs, not the sample-based library API.
+- Migrated example CLI audio decoding to `symphonia` 0.6 with a shared decoder
+  helper and narrower dev-only codec feature set.
+- Kept the unimplemented `ml` integration point dependency-free while
+  preserving `ml` and `ort` feature flags for backward-compatible Cargo feature
+  lists.
+- Validation results now include additive BPM ratio bucket and MIREX-style key
+  scoring columns while preserving the existing CSV workflow.
+- `compute_stft` now reuses one FFT input buffer across frames while preserving
+  the existing `Vec<Vec<f32>>` magnitude spectrogram return shape.
+- `analyze_audio` now borrows the processed sample buffer when silence trimming
+  is disabled instead of cloning the whole buffer.
 - **README.md**: Major update with validation results table, performance benchmarks, known limitations
 - Documentation: top-level docs focus on the current pipeline and canonical workflows
 - Defaults: HPSS percussive tempogram fallback is opt-in (avoids multi-second outliers)
@@ -70,6 +98,18 @@ println!("BPM: {:.1} | Key: {} ({})",
   - Minor keys now correctly detected (was previously biased toward major)
   - Key accuracy improved from 1.5% to 72.1% vs GT
 
+### Fixed
+- `analyze_audio` validates `AnalysisConfig` for finite values and core
+  structural constraints before DSP work.
+- `compute_stft` now rejects direct zero frame/hop size calls instead of
+  allowing invalid public inputs to panic.
+- Key-score tie handling is deterministic across repeated and parallel analysis
+  runs.
+- `analyze_audio` rejects NaN and infinite samples before preprocessing or DSP
+  comparison paths.
+
 ### Removed
 - Unused dependencies: `ndarray`, `ndarray-linalg`
+- Inactive ORT/runtime dependency surface from `--all-features` while Phase 2 ML
+  remains unimplemented.
 - Unimplemented public IO stubs moved out of the crate (archived under `archive/`)

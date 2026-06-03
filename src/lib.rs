@@ -8,6 +8,7 @@
 //! - **BPM Detection**: Multi-method onset detection with autocorrelation and comb filterbank
 //! - **Key Detection**: Chroma-based analysis with Krumhansl-Kessler template matching
 //! - **Beat Tracking**: HMM-based beat grid generation with tempo drift correction
+//! - **Waveform Envelopes**: Deterministic min/max/RMS/peak multi-resolution waveform data
 //! - **ML Refinement**: Optional ONNX model for edge case correction (Phase 2)
 //!
 //! ## Quick Start
@@ -45,6 +46,7 @@ pub mod config;
 pub mod error;
 pub mod features;
 pub mod preprocessing;
+pub mod waveform;
 
 #[cfg(feature = "ml")]
 pub mod ml;
@@ -54,6 +56,7 @@ pub use analysis::confidence::{compute_confidence, AnalysisConfidence};
 pub use analysis::result::{AnalysisMetadata, AnalysisResult, BeatGrid, Key, KeyType};
 pub use config::AnalysisConfig;
 pub use error::AnalysisError;
+pub use waveform::{generate_waveform, Waveform, WaveformConfig, WaveformLevel, WaveformPoint};
 
 /// Main analysis function
 ///
@@ -72,7 +75,8 @@ pub use error::AnalysisError;
 ///
 /// # Errors
 ///
-/// Returns `AnalysisError` if analysis fails (invalid input, processing error, etc.)
+/// Returns `AnalysisError` if analysis fails, including empty input, zero sample
+/// rate, non-finite samples, or downstream processing errors.
 ///
 /// # Example
 ///
@@ -88,6 +92,7 @@ pub fn analyze_audio(
     sample_rate: u32,
     config: AnalysisConfig,
 ) -> Result<AnalysisResult, AnalysisError> {
+    use std::borrow::Cow;
     use std::time::Instant;
     let start_time = Instant::now();
 
@@ -97,17 +102,8 @@ pub fn analyze_audio(
         sample_rate
     );
 
-    if samples.is_empty() {
-        return Err(AnalysisError::InvalidInput(
-            "Empty audio samples".to_string(),
-        ));
-    }
-
-    if sample_rate == 0 {
-        return Err(AnalysisError::InvalidInput(
-            "Invalid sample rate".to_string(),
-        ));
-    }
+    validate_audio_input(samples, sample_rate)?;
+    config.validate()?;
 
     // Phase 1A: Preprocessing
     let mut processed_samples = samples.to_vec();
@@ -128,17 +124,21 @@ pub fn analyze_audio(
 
     // 2. Silence detection and trimming
     use preprocessing::silence::{detect_and_trim, SilenceDetector};
-    let (trimmed_samples, _silence_regions) = if config.enable_silence_trimming {
-        let silence_detector = SilenceDetector {
-            threshold_db: config.min_amplitude_db,
-            min_duration_ms: 500,
-            frame_size: config.frame_size,
+    let (trimmed_sample_storage, _silence_regions): (Cow<'_, [f32]>, Vec<_>) =
+        if config.enable_silence_trimming {
+            let silence_detector = SilenceDetector {
+                threshold_db: config.min_amplitude_db,
+                min_duration_ms: 500,
+                frame_size: config.frame_size,
+            };
+            let (trimmed_samples, silence_regions) =
+                detect_and_trim(&processed_samples, sample_rate, silence_detector)?;
+            (Cow::Owned(trimmed_samples), silence_regions)
+        } else {
+            log::debug!("Skipping silence trimming (enable_silence_trimming=false)");
+            (Cow::Borrowed(processed_samples.as_slice()), Vec::new())
         };
-        detect_and_trim(&processed_samples, sample_rate, silence_detector)?
-    } else {
-        log::debug!("Skipping silence trimming (enable_silence_trimming=false)");
-        (processed_samples.clone(), Vec::new())
-    };
+    let trimmed_samples = trimmed_sample_storage.as_ref();
 
     if trimmed_samples.is_empty() {
         return Err(AnalysisError::ProcessingError(
@@ -152,7 +152,7 @@ pub fn analyze_audio(
     use features::onset::energy_flux::detect_energy_flux_onsets;
 
     let energy_onsets = detect_energy_flux_onsets(
-        &trimmed_samples,
+        trimmed_samples,
         config.frame_size,
         config.hop_size,
         -20.0, // threshold_db
@@ -163,7 +163,7 @@ pub fn analyze_audio(
     // Phase 1F: Tempogram-based BPM Detection (replaces Phase 1B period estimation)
     // Compute STFT once (used by tempogram BPM and STFT-based onset detectors)
     use features::chroma::extractor::compute_stft;
-    let magnitude_spec_frames = compute_stft(&trimmed_samples, config.frame_size, config.hop_size)?;
+    let magnitude_spec_frames = compute_stft(trimmed_samples, config.frame_size, config.hop_size)?;
 
     // Onset consensus (improves beat tracking + legacy BPM fallback robustness)
     //
@@ -492,7 +492,7 @@ pub fn analyze_audio(
 
                     if ambiguous {
                         match multi_resolution_tempogram_from_samples(
-                            &trimmed_samples,
+                            trimmed_samples,
                             sample_rate,
                             config.frame_size,
                             config.min_bpm,
@@ -978,7 +978,8 @@ pub fn analyze_audio(
         use features::chroma::smoothing::smooth_chroma;
         use features::key::{
             compute_key_clarity, detect_key_ensemble, detect_key_multi_scale, detect_key_weighted,
-            detect_key_weighted_mode_heuristic, KeyDetectionResult, KeyTemplates,
+            detect_key_weighted_mode_heuristic, sort_key_scores_desc, KeyDetectionResult,
+            KeyTemplates,
         };
 
         // Key-only STFT override (optional): allow higher frequency resolution for key detection.
@@ -994,7 +995,7 @@ pub fn analyze_audio(
         };
 
         let key_spec_frames = if config.enable_key_stft_override {
-            match compute_stft(&trimmed_samples, key_fft_size, key_hop_size) {
+            match compute_stft(trimmed_samples, key_fft_size, key_hop_size) {
                 Ok(s) => s,
                 Err(e) => {
                     log::warn!(
@@ -1412,7 +1413,7 @@ pub fn analyze_audio(
                             }
                         } else {
                             // Sort accumulated scores and build a KeyDetectionResult.
-                            acc_scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+                            sort_key_scores_desc(&mut acc_scores);
                             let (best_key, best_score) = acc_scores[0];
                             let second_score = if acc_scores.len() > 1 {
                                 acc_scores[1].1
@@ -1632,4 +1633,103 @@ pub fn analyze_audio(
 
     // Return result with Phase 1E confidence scoring integrated
     Ok(result)
+}
+
+pub(crate) fn validate_audio_input(samples: &[f32], sample_rate: u32) -> Result<(), AnalysisError> {
+    if samples.is_empty() {
+        return Err(AnalysisError::InvalidInput(
+            "Empty audio samples".to_string(),
+        ));
+    }
+
+    if sample_rate == 0 {
+        return Err(AnalysisError::InvalidInput(
+            "Invalid sample rate".to_string(),
+        ));
+    }
+
+    if let Some((index, sample)) = samples
+        .iter()
+        .enumerate()
+        .find(|(_, sample)| !sample.is_finite())
+    {
+        return Err(AnalysisError::InvalidInput(format!(
+            "Audio samples must be finite; sample at index {index} was {sample}"
+        )));
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_invalid_input(result: Result<(), AnalysisError>, expected: &str) {
+        match result {
+            Err(AnalysisError::InvalidInput(message)) => {
+                assert!(
+                    message.contains(expected),
+                    "expected invalid input message to contain {expected:?}, got {message:?}"
+                );
+            }
+            Err(other) => panic!("expected InvalidInput, got {other:?}"),
+            Ok(()) => panic!("expected InvalidInput, got Ok"),
+        }
+    }
+
+    #[test]
+    fn validate_audio_input_rejects_empty_samples() {
+        assert_invalid_input(validate_audio_input(&[], 44_100), "Empty audio samples");
+    }
+
+    #[test]
+    fn validate_audio_input_rejects_zero_sample_rate() {
+        assert_invalid_input(validate_audio_input(&[0.0], 0), "Invalid sample rate");
+    }
+
+    #[test]
+    fn validate_audio_input_rejects_non_finite_samples() {
+        for sample in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            let mut samples = vec![0.0; 128];
+            samples[17] = sample;
+
+            assert_invalid_input(validate_audio_input(&samples, 44_100), "index 17");
+        }
+    }
+
+    #[test]
+    fn analyze_audio_rejects_non_finite_before_processing() {
+        let mut samples = vec![0.0; 44_100];
+        samples[256] = f32::NAN;
+
+        let result = analyze_audio(&samples, 44_100, AnalysisConfig::default());
+        match result {
+            Err(AnalysisError::InvalidInput(message)) => {
+                assert!(message.contains("finite"));
+                assert!(message.contains("256"));
+            }
+            Err(other) => panic!("expected InvalidInput, got {other:?}"),
+            Ok(_) => panic!("expected InvalidInput, got Ok"),
+        }
+    }
+
+    #[test]
+    fn analyze_audio_rejects_invalid_config_before_processing() {
+        let samples = vec![0.0; 44_100];
+        let config = AnalysisConfig {
+            hop_size: 0,
+            ..Default::default()
+        };
+
+        let result = analyze_audio(&samples, 44_100, config);
+        match result {
+            Err(AnalysisError::InvalidInput(message)) => {
+                assert!(message.contains("Invalid analysis config"));
+                assert!(message.contains("hop_size"));
+            }
+            Err(other) => panic!("expected InvalidInput, got {other:?}"),
+            Ok(_) => panic!("expected InvalidInput, got Ok"),
+        }
+    }
 }

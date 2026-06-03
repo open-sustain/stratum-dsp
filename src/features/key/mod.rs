@@ -19,6 +19,28 @@ pub use key_clarity::compute_key_clarity;
 pub use templates::KeyTemplates;
 
 use crate::analysis::result::Key;
+use std::cmp::Ordering;
+
+pub(crate) fn key_sort_index(key: Key) -> u32 {
+    match key {
+        Key::Major(i) => i % 12,
+        Key::Minor(i) => 12 + (i % 12),
+    }
+}
+
+pub(crate) fn compare_key_scores_desc(a: &(Key, f32), b: &(Key, f32)) -> Ordering {
+    match (a.1.is_finite(), b.1.is_finite()) {
+        (true, true) => b.1.total_cmp(&a.1),
+        (true, false) => Ordering::Less,
+        (false, true) => Ordering::Greater,
+        (false, false) => Ordering::Equal,
+    }
+    .then_with(|| key_sort_index(a.0).cmp(&key_sort_index(b.0)))
+}
+
+pub(crate) fn sort_key_scores_desc(scores: &mut [(Key, f32)]) {
+    scores.sort_by(compare_key_scores_desc);
+}
 
 /// Key detection result
 #[derive(Debug, Clone)]

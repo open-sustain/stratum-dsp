@@ -2,6 +2,9 @@
 
 This directory contains scripts for validating stratum-dsp against ground truth datasets.
 
+Benchmark corpus policy, researched candidate datasets, and manifest
+requirements live in `validation/benchmarks/`.
+
 **Primary validation dataset**: Real-world DJ tracks (Beatport/ZipDJ) — 155 tracks with verified BPM/key ground truth.  
 **Results**: 
 - **BPM**: 87.7% ±2 BPM accuracy, 6.08 BPM MAE
@@ -178,6 +181,9 @@ Contains validation results for each track:
 - `bpm_gt`: Ground truth BPM
 - `bpm_pred`: Predicted BPM
 - `bpm_error`: Absolute BPM error
+- `bpm_ratio`: Predicted BPM divided by ground-truth BPM
+- `bpm_ratio_bucket`: Metrical-level bucket such as `1x`, `2x`, `1/2x`,
+  `3/2x`, or `other`
 - `bpm_tag`: TAG BPM (from ID3 TBPM), if present
 - `bpm_tag_error`: Absolute TAG BPM error vs ground truth, if present
 - `key_gt`: Ground truth key
@@ -187,12 +193,34 @@ Contains validation results for each track:
   - `GT` if key ground truth exists in metadata
   - `TAG` if GT is missing but the file tag contains a key (fallback agreement mode)
   - `N/A` if neither is available
+- `key_mirex_category`: MIREX-style Stratum-vs-reference key category
+  (`correct`, `fifth`, `relative`, `parallel`, `other`, or `invalid`)
+- `key_mirex_score`: MIREX-style category score
 - `key_tag`: TAG key (from ID3 TKEY / common TXXX fallbacks), if present
 - `key_tag_match`: "YES" if TAG key matches ground truth, "NO" otherwise
+- `key_tag_mirex_category`: MIREX-style TAG-vs-GT category when GT and TAG key
+  are both available
+- `key_tag_mirex_score`: MIREX-style TAG-vs-GT score when available
 - `bpm_confidence`: BPM confidence score
 - `key_confidence`: Key confidence score
 - `key_clarity`: Key clarity score
 - `grid_stability`: Beat grid stability score
+
+## Shared Metric Helpers
+
+`validation/_metrics.py` centralizes dependency-free metrics used by validation
+and analysis scripts:
+
+- BPM absolute error, ±tolerance checks, and metrical ratio buckets.
+- MIREX-style key categories and weighted key score summaries.
+- Beat/downbeat precision, recall, and F-measure using the mir_eval-compatible
+  default `0.07` second tolerance window.
+- Optional event trimming before a minimum time, including the common mir_eval
+  beat preprocessing convention of ignoring beats before `5.0` seconds when a
+  benchmark protocol requires it.
+
+Beat/downbeat helpers are scaffolding for manifest-backed corpora such as
+Ballroom and Harmonix. They are not yet wired into `validation_results.csv`.
 
 ## Target Accuracy
 
@@ -207,4 +235,3 @@ The validation compares results against these targets:
 - Python 3.6+ is required (no external dependencies)
 - The validation uses the `analyze_file` example binary which outputs JSON for easy parsing
 - TAG extraction currently supports **ID3v2.3/2.4** and reads `TBPM`, `TKEY`, plus common `TXXX` key fields (e.g., `initialkey`).
-

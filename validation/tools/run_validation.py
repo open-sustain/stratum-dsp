@@ -24,6 +24,15 @@ if __package__ in (None, ""):
 from validation._paths import find_repo_root, resolve_data_path
 from validation._id3 import read_id3_text_fields
 from validation._keys import normalize_key
+from validation._metrics import (
+    bpm_absolute_error,
+    bpm_within_tolerance,
+    evaluate_key_mirex,
+    key_mirex_summary,
+    parse_float,
+    tempo_ratio,
+    tempo_ratio_bucket,
+)
 
 def read_tag_bpm_key(mp3_path: Path) -> dict:
     """
@@ -683,8 +692,15 @@ def main():
         key_tag = tag_fields.get("key_tag", "")
 
         # Compare to ground truth (from metadata CSVs via test batch)
-        bpm_error = abs(pred_bpm - bpm_gt)
-        bpm_tag_error = abs(float(bpm_tag) - bpm_gt) if bpm_tag is not None else ""
+        bpm_error = bpm_absolute_error(pred_bpm, bpm_gt)
+        if bpm_error is None:
+            return i, track_id, None, "ERROR: Invalid BPM result"
+        bpm_ratio = tempo_ratio(pred_bpm, bpm_gt)
+        bpm_ratio_bucket = tempo_ratio_bucket(pred_bpm, bpm_gt)
+        bpm_tag_value = parse_float(bpm_tag)
+        bpm_tag_error = (
+            bpm_absolute_error(bpm_tag_value, bpm_gt) if bpm_tag_value is not None else ""
+        )
 
         key_gt_norm = normalize_key(key_gt)
         key_pred_norm = normalize_key(pred_key)
@@ -697,14 +713,24 @@ def main():
         key_ref = "N/A"
         if key_gt_norm:
             key_ref = "GT"
-            key_match = "YES" if key_pred_norm == key_gt_norm else "NO"
-            key_tag_match = "YES" if key_tag_norm == key_gt_norm else "NO" if key_tag_norm else "NO"
+            key_eval = evaluate_key_mirex(key_pred_norm, key_gt_norm)
+            key_match = "YES" if key_eval["category"] == "correct" else "NO"
+            if key_tag_norm:
+                key_tag_eval = evaluate_key_mirex(key_tag_norm, key_gt_norm)
+                key_tag_match = "YES" if key_tag_eval["category"] == "correct" else "NO"
+            else:
+                key_tag_eval = None
+                key_tag_match = "NO"
         elif key_tag_norm:
             key_ref = "TAG"
-            key_match = "YES" if key_pred_norm == key_tag_norm else "NO"
+            key_eval = evaluate_key_mirex(key_pred_norm, key_tag_norm)
+            key_match = "YES" if key_eval["category"] == "correct" else "NO"
+            key_tag_eval = None
             # TAG is the reference here, so this field is not meaningful.
             key_tag_match = "N/A"
         else:
+            key_eval = None
+            key_tag_eval = None
             key_match = "N/A"
             key_tag_match = "N/A"
 
@@ -714,14 +740,20 @@ def main():
             "bpm_gt": bpm_gt,
             "bpm_pred": pred_bpm,
             "bpm_error": bpm_error,
-            "bpm_tag": bpm_tag if bpm_tag is not None else "",
+            "bpm_ratio": f"{bpm_ratio:.8f}" if bpm_ratio is not None else "",
+            "bpm_ratio_bucket": bpm_ratio_bucket,
+            "bpm_tag": bpm_tag_value if bpm_tag_value is not None else "",
             "bpm_tag_error": bpm_tag_error,
             "key_gt": key_gt,
             "key_pred": pred_key,
             "key_ref": key_ref,
             "key_match": key_match,
+            "key_mirex_category": key_eval["category"] if key_eval else "",
+            "key_mirex_score": key_eval["score"] if key_eval else "",
             "key_tag": key_tag,
             "key_tag_match": key_tag_match,
+            "key_tag_mirex_category": key_tag_eval["category"] if key_tag_eval else "",
+            "key_tag_mirex_score": key_tag_eval["score"] if key_tag_eval else "",
             "bpm_confidence": analysis_result.get("bpm_confidence", 0.0),
             "key_confidence": analysis_result.get("key_confidence", 0.0),
             "key_clarity": analysis_result.get("key_clarity", 0.0),
@@ -732,12 +764,19 @@ def main():
             "tempogram_percussive_used": analysis_result.get("tempogram_percussive_used", ""),
         }
 
-        bpm_tag_str = f"{float(bpm_tag):.1f}" if bpm_tag is not None else "N/A"
-        bpm_tag_err_str = f"{float(bpm_tag_error):.1f}" if bpm_tag is not None else "N/A"
+        bpm_tag_str = f"{bpm_tag_value:.1f}" if bpm_tag_value is not None else "N/A"
+        bpm_tag_err_str = (
+            f"{float(bpm_tag_error):.1f}" if bpm_tag_error != "" else "N/A"
+        )
         key_ref_disp = key_ref if key_ref != "N/A" else "N/A"
+        key_mirex_disp = (
+            f", mirex={key_eval['category']}:{float(key_eval['score']):.1f}"
+            if key_eval
+            else ""
+        )
         log_line = (
             f"BPM: {pred_bpm:.1f} (error: {bpm_error:.1f}), TAG BPM: {bpm_tag_str} (error: {bpm_tag_err_str}), "
-            f"Key: {pred_key} ({key_match}, ref={key_ref_disp}), TAG Key: {key_tag or 'N/A'} ({key_tag_match})"
+            f"Key: {pred_key} ({key_match}, ref={key_ref_disp}{key_mirex_disp}), TAG Key: {key_tag or 'N/A'} ({key_tag_match})"
         )
 
         # If this is a debug track, append stderr below the log line for easier diagnosis.
@@ -793,11 +832,6 @@ def main():
         key_rows = [r for r in results if r.get("key_match") in ("YES", "NO")]
         key_rows_ref_gt = [r for r in key_rows if r.get("key_ref") == "GT"]
         key_rows_ref_tag = [r for r in key_rows if r.get("key_ref") == "TAG"]
-        key_accuracy = (
-            sum(1 for r in key_rows if r["key_match"] == "YES") / len(key_rows) * 100
-            if key_rows
-            else 0.0
-        )
 
         # TAG metrics (if present)
         tag_rows = [r for r in results if r.get("bpm_tag_error") != ""]
@@ -819,7 +853,11 @@ def main():
         )
         
         # BPM accuracy within ±2 BPM
-        bpm_accuracy_2 = sum(1 for r in results if r["bpm_error"] <= 2.0) / len(results) * 100
+        bpm_accuracy_2 = (
+            sum(1 for r in results if bpm_within_tolerance(r["bpm_pred"], r["bpm_gt"]))
+            / len(results)
+            * 100
+        )
         
         print(f"Tracks tested: {len(results)}")
         print(f"Stratum BPM MAE: ±{avg_bpm_error:.2f}")
@@ -827,9 +865,21 @@ def main():
         if key_rows_ref_gt:
             acc_gt = sum(1 for r in key_rows_ref_gt if r["key_match"] == "YES") / len(key_rows_ref_gt) * 100
             print(f"Stratum Key accuracy vs GT: {acc_gt:.1f}% (n={len(key_rows_ref_gt)})")
+            mirex_gt = key_mirex_summary(key_rows_ref_gt, "key_pred", "key_gt")
+            print(
+                "Stratum Key MIREX vs GT: "
+                f"{mirex_gt['weighted_percent']:.1f}% "
+                f"(correct={mirex_gt['counts']['correct']}, "
+                f"fifth={mirex_gt['counts']['fifth']}, "
+                f"relative={mirex_gt['counts']['relative']}, "
+                f"parallel={mirex_gt['counts']['parallel']}, "
+                f"other={mirex_gt['counts']['other']})"
+            )
         if key_rows_ref_tag:
             acc_tag = sum(1 for r in key_rows_ref_tag if r["key_match"] == "YES") / len(key_rows_ref_tag) * 100
             print(f"Stratum Key agreement vs TAG: {acc_tag:.1f}% (n={len(key_rows_ref_tag)})")
+            mirex_tag = key_mirex_summary(key_rows_ref_tag, "key_pred", "key_tag")
+            print(f"Stratum Key MIREX vs TAG: {mirex_tag['weighted_percent']:.1f}%")
         if not key_rows_ref_gt and not key_rows_ref_tag:
             print("Stratum Key: N/A (no GT key and no TAG key available in batch)")
 
@@ -856,4 +906,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

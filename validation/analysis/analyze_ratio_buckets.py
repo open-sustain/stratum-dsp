@@ -10,6 +10,8 @@ import argparse
 import csv
 import os
 
+from validation._metrics import TEMPO_RATIO_FACTORS, tempo_ratio_bucket
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Analyze pred/gt ratio buckets in validation results")
@@ -32,34 +34,18 @@ def main() -> None:
     with open(path, "r", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
 
-    ratios = []
-    for r in rows:
-        gt = float(r["bpm_gt"])
-        pred = float(r["bpm_pred"])
-        if gt > 0 and pred > 0:
-            ratios.append(pred / gt)
-
-    factors = [
-        ("1x", 1.0),
-        ("2x", 2.0),
-        ("1/2x", 0.5),
-        ("3/2x", 1.5),
-        ("2/3x", 2 / 3),
-        ("4/3x", 4 / 3),
-        ("3/4x", 3 / 4),
-    ]
-
     counts = {}
-    for q in ratios:
-        hit = None
-        for name, f in factors:
-            if abs(q - f) <= tol:
-                hit = name
-                break
-        counts[hit or "other"] = counts.get(hit or "other", 0) + 1
+    n = 0
+    for row in rows:
+        bucket = tempo_ratio_bucket(row.get("bpm_pred"), row.get("bpm_gt"), tol)
+        if bucket == "N/A":
+            continue
+        counts[bucket] = counts.get(bucket, 0) + 1
+        n += 1
 
     print(f"File: {os.path.basename(path)}")
-    print(f"n={len(ratios)}")
+    print(f"n={n}")
+    print("factors: " + ", ".join(f"{name}={factor:.3f}" for name, factor in TEMPO_RATIO_FACTORS))
     print(f"ratio buckets (±{tol}):")
     for k, v in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])):
         print(f"  {k}: {v}")
@@ -67,5 +53,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
 

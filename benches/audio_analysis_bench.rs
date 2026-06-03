@@ -4,7 +4,9 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use stratum_dsp::features::beat_tracking::bayesian::BayesianBeatTracker;
 use stratum_dsp::features::beat_tracking::hmm::HmmBeatTracker;
 use stratum_dsp::features::beat_tracking::{generate_beat_grid, tempo_variation, time_signature};
-use stratum_dsp::features::chroma::extractor::{extract_chroma, extract_chroma_with_options};
+use stratum_dsp::features::chroma::extractor::{
+    compute_stft, extract_chroma, extract_chroma_with_options,
+};
 use stratum_dsp::features::chroma::normalization::sharpen_chroma;
 use stratum_dsp::features::chroma::smoothing::smooth_chroma;
 use stratum_dsp::features::key::{
@@ -19,7 +21,7 @@ use stratum_dsp::preprocessing::normalization::{
     normalize, NormalizationConfig, NormalizationMethod,
 };
 use stratum_dsp::preprocessing::silence::{detect_and_trim, SilenceDetector};
-use stratum_dsp::{analyze_audio, AnalysisConfig};
+use stratum_dsp::{analyze_audio, generate_waveform, AnalysisConfig, WaveformConfig};
 
 /// Generate synthetic test audio (sine wave)
 fn generate_test_audio(length: usize) -> Vec<f32> {
@@ -103,6 +105,26 @@ fn onset_detection_benchmarks(c: &mut Criterion) {
             );
         });
     });
+}
+
+fn stft_benchmarks(c: &mut Criterion) {
+    let audio = generate_test_audio(44100 * 30); // 30 seconds
+    let frame_size = 2048usize;
+    let hop_size = 512usize;
+
+    let mut group = c.benchmark_group("stft");
+
+    group.bench_function("compute_stft_30s_2048_512", |b| {
+        b.iter(|| {
+            let _ = compute_stft(
+                black_box(&audio),
+                black_box(frame_size),
+                black_box(hop_size),
+            );
+        });
+    });
+
+    group.finish();
 }
 
 fn period_estimation_benchmarks(c: &mut Criterion) {
@@ -407,9 +429,44 @@ fn key_change_detection_benchmarks(c: &mut Criterion) {
     });
 }
 
+fn waveform_benchmarks(c: &mut Criterion) {
+    let short_samples = generate_test_audio(44100 * 30); // 30 seconds
+    let long_samples = generate_test_audio(44100 * 180); // 3 minutes
+    let sample_rate = 44100u32;
+    let config = WaveformConfig::default();
+
+    let mut group = c.benchmark_group("waveform");
+
+    group.bench_function("generate_waveform_30s_default", |b| {
+        b.iter(|| {
+            let _ = generate_waveform(
+                black_box(&short_samples),
+                black_box(sample_rate),
+                black_box(config),
+            );
+        });
+    });
+
+    group.bench_function("generate_waveform_3min_default", |b| {
+        b.iter(|| {
+            let _ = generate_waveform(
+                black_box(&long_samples),
+                black_box(sample_rate),
+                black_box(config),
+            );
+        });
+    });
+
+    group.finish();
+}
+
 fn full_analysis_benchmark(c: &mut Criterion) {
     let samples = generate_test_audio(44100 * 30); // 30 seconds
     let config = AnalysisConfig::default();
+    let no_trim_config = AnalysisConfig {
+        enable_silence_trimming: false,
+        ..AnalysisConfig::default()
+    };
 
     c.bench_function("analyze_audio_30s", |b| {
         b.iter(|| {
@@ -420,6 +477,16 @@ fn full_analysis_benchmark(c: &mut Criterion) {
             );
         });
     });
+
+    c.bench_function("analyze_audio_30s_no_silence_trim", |b| {
+        b.iter(|| {
+            let _ = analyze_audio(
+                black_box(&samples),
+                black_box(44100),
+                black_box(no_trim_config.clone()),
+            );
+        });
+    });
 }
 
 criterion_group!(
@@ -427,6 +494,7 @@ criterion_group!(
     normalization_benchmarks,
     silence_detection_benchmarks,
     onset_detection_benchmarks,
+    stft_benchmarks,
     period_estimation_benchmarks,
     beat_tracking_benchmarks,
     chroma_extraction_benchmarks,
@@ -434,6 +502,7 @@ criterion_group!(
     chroma_smoothing_benchmarks,
     key_detection_benchmarks,
     key_change_detection_benchmarks,
+    waveform_benchmarks,
     full_analysis_benchmark
 );
 criterion_main!(benches);

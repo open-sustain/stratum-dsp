@@ -303,6 +303,18 @@ pub fn compute_stft(
     frame_size: usize,
     hop_size: usize,
 ) -> Result<Vec<Vec<f32>>, AnalysisError> {
+    if frame_size == 0 {
+        return Err(AnalysisError::InvalidInput(
+            "Frame size must be > 0".to_string(),
+        ));
+    }
+
+    if hop_size == 0 {
+        return Err(AnalysisError::InvalidInput(
+            "Hop size must be > 0".to_string(),
+        ));
+    }
+
     let n_samples = samples.len();
 
     if n_samples < frame_size {
@@ -315,16 +327,22 @@ pub fn compute_stft(
     let mut magnitudes = Vec::with_capacity(n_frames);
 
     // Create Hann window
-    let window: Vec<f32> = (0..frame_size)
-        .map(|i| {
-            let x = 2.0 * std::f32::consts::PI * i as f32 / (frame_size - 1) as f32;
-            0.5 * (1.0 - x.cos())
-        })
-        .collect();
+    let window: Vec<f32> = if frame_size == 1 {
+        vec![1.0]
+    } else {
+        (0..frame_size)
+            .map(|i| {
+                let x = 2.0 * std::f32::consts::PI * i as f32 / (frame_size - 1) as f32;
+                0.5 * (1.0 - x.cos())
+            })
+            .collect()
+    };
 
     // FFT planner
     let mut planner = FftPlanner::new();
     let fft = planner.plan_fft_forward(frame_size);
+    let mut fft_input = vec![Complex::new(0.0f32, 0.0f32); frame_size];
+    let n_bins = frame_size / 2 + 1;
 
     // Process each frame
     for frame_idx in 0..n_frames {
@@ -335,22 +353,25 @@ pub fn compute_stft(
             break;
         }
 
-        // Window the frame
-        let mut fft_input: Vec<Complex<f32>> = samples[start..end]
-            .iter()
+        // Window the frame into a reusable FFT buffer.
+        for ((slot, &sample), &window_value) in fft_input
+            .iter_mut()
+            .zip(samples[start..end].iter())
             .zip(window.iter())
-            .map(|(&s, &w)| Complex::new(s * w, 0.0))
-            .collect();
+        {
+            *slot = Complex::new(sample * window_value, 0.0);
+        }
 
         // Forward FFT
         fft.process(&mut fft_input);
 
         // Compute magnitude spectrum (only need first frame_size/2 + 1 bins for real FFT)
-        let n_bins = frame_size / 2 + 1;
-        let magnitude: Vec<f32> = fft_input[..n_bins]
-            .iter()
-            .map(|x| (x.re * x.re + x.im * x.im).sqrt())
-            .collect();
+        let mut magnitude = Vec::with_capacity(n_bins);
+        magnitude.extend(
+            fft_input[..n_bins]
+                .iter()
+                .map(|x| (x.re * x.re + x.im * x.im).sqrt()),
+        );
 
         magnitudes.push(magnitude);
     }
@@ -1592,6 +1613,28 @@ mod tests {
 
         // Zero sample rate
         assert!(extract_chroma(&samples, 0, 2048, 512).is_err());
+    }
+
+    #[test]
+    fn test_compute_stft_rejects_zero_sizes() {
+        let samples = vec![0.0f32; 10000];
+
+        assert!(compute_stft(&samples, 0, 512).is_err());
+        assert!(compute_stft(&samples, 2048, 0).is_err());
+    }
+
+    #[test]
+    fn test_compute_stft_single_sample_frame_is_finite() {
+        let samples = vec![0.25f32, -0.5, 0.75];
+
+        let frames = compute_stft(&samples, 1, 1).unwrap();
+
+        assert_eq!(frames.len(), samples.len());
+        for (frame, expected) in frames.iter().zip(samples.iter()) {
+            assert_eq!(frame.len(), 1);
+            assert!(frame[0].is_finite());
+            assert!((frame[0] - expected.abs()).abs() < 1e-6);
+        }
     }
 
     #[test]
