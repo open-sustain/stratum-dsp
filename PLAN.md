@@ -6,6 +6,69 @@
 
 ---
 
+## ⮕ CURRENT NEXT STEP (2026-06-03) — DECISION FOR CODEX: Sustain integration boundary
+
+> This is the current top priority and supersedes the symphonia-hygiene framing
+> below as *what to work on next*. The symphonia work (Path A) is already
+> implemented on the WIP branch; the open question now is **architectural and is
+> Codex's call**. Decide it before further DSP work.
+
+**Why this is the priority.** This rework exists to benefit **Sustain**
+(`../sustain`), its primary consumer. A cross-repo survey on 2026-06-03 found
+that the current orchestration-centric improvements largely do **not** serve
+Sustain, because of how Sustain actually integrates.
+
+**What we discovered (Sustain `crates/analysis`, pins `stratum-dsp = "1.0"`):**
+
+- Sustain consumes stratum-dsp as a **low-level primitives toolkit, not via
+  `analyze_audio`**. It imports directly: `estimate_bpm_tempogram`, `detect_key`
+  + `KeyTemplates`, `chroma::extractor`, `spectral_flux` onsets, and
+  `normalization` (ITU-R BS.1770-4 LUFS).
+- It does **not** use `analyze_audio`, the beat-grid HMM, or the waveform module
+  (it computes waveforms/band features itself; the beat-grid slot is reserved
+  `None` and it synthesizes a constant-tempo grid for Rekordbox export).
+- Bypassing orchestration costs Sustain **~7% BPM accuracy (~85% vs ~92%)** per
+  its own comments — accepted today because `analyze_audio` is all-or-nothing.
+- **Smart Shuffle** widens the consumed surface beyond BPM/key: LUFS triplet
+  (integrated / short-term max / range), onset rate, low/mid/high band ratios,
+  low-band variation, and tonalness — all built on stratum's LUFS / onsets /
+  STFT primitives.
+- **Coupling risk:** Sustain pins **undocumented internal module paths** with no
+  semver contract; an upstream rename could silently break it. Tracked as Q-014.
+
+**Decision requested of Codex — where should the stratum-dsp ↔ Sustain boundary
+sit?**
+
+- **A. Composable full-quality primitives** — documented, semver-stable,
+  individually-callable `bpm/key/onsets/loudness/chroma`, each full-quality
+  standalone; `analyze_audio` becomes optional. Recovers the 7% and kills the
+  coupling.
+- **B. Bless + document the exact internals Sustain already imports** — smallest
+  surface change; weaker long-term contract.
+- **C. Capability-flagged `analyze_audio`** — centralizes quality but reverses
+  Sustain's deliberate low-level integration.
+
+**Hard constraints on any choice:**
+
+- **Capability-gated performance is mandatory** — asking for BPM must not pay for
+  key/chroma compute. (Favors A; achievable in C only with disciplined gating of
+  shared stages such as the key-grade STFT.)
+- **No genre profiles.** A `DjEdm`/`General` profile is rejected. The bar is
+  genuine whole-tempo-range quality. The only acceptable knob is an honest
+  `tempo_range` / octave-anchor search param (e.g. 81–160, a sub-2:1 span that
+  removes octave ambiguity), replacing the magic 60–180 prior + the
+  "ratio < 2.5" fold heuristic in `tempogram.rs`. The wide-open default must
+  still earn whole-range quality (Q-009, benchmark-gated).
+- Stay additive / backward-compatible per AGENTS.md; no unapproved public breaks.
+
+**User's lean:** A or C, with serious capability-dependent performance work — but
+the final choice is Codex's. **Action for Codex:** decide A/B/C, record the
+decision + rationale here and in Q-014, then write the explicit Sustain-output
+contract (BPM, key, LUFS triplet, onset rate, STFT/chroma for band + tonalness)
+before any DSP changes.
+
+---
+
 ## STATUS — verification result (2026-06-03)
 
 - **The maintainer is NOT gone.** `GET /users/HLLMR` → 200, live `User` account
