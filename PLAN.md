@@ -61,11 +61,73 @@ sit?**
   still earn whole-range quality (Q-009, benchmark-gated).
 - Stay additive / backward-compatible per AGENTS.md; no unapproved public breaks.
 
-**User's lean:** A or C, with serious capability-dependent performance work — but
-the final choice is Codex's. **Action for Codex:** decide A/B/C, record the
-decision + rationale here and in Q-014, then write the explicit Sustain-output
-contract (BPM, key, LUFS triplet, onset rate, STFT/chroma for band + tonalness)
-before any DSP changes.
+**Two separate axes — do not conflate them:**
+
+1. **API shape** — A / B / C above: how the analysis surface is exposed.
+2. **Consumption model** — how Sustain obtains the code:
+   - *published crate* (upstream PR → crates.io → version bump) — slowest loop,
+     least control;
+   - *git-pinned dependency* on `open-sustain/stratum-dsp` (pin a commit, carry
+     Sustain patches on a branch, upstream selectively) — most control without
+     owning the source;
+   - *full ingestion / vendoring* into Sustain (Path B below) — max control +
+     tailoring freedom, max ownership.
+
+   These compose, e.g. ingest **and** shape as clean composable primitives
+   (A-shaped, vendored).
+
+**Updated analysis (2026-06-03) — re-weighting ingestion. This revises Path B's
+cost framing below:**
+
+- **Footprint: the ingest size is not the whole crate.** Library is ~20k LOC,
+  but Sustain uses none of: `beat_tracking` (2,338), `analysis`/confidence
+  (927), most of `lib.rs` orchestration (~1,500), `waveform.rs` (289), `ml`
+  (105) — **~5k LOC droppable immediately** — plus the legacy onset-based BPM
+  paths in `period`, the non-`spectral_flux` onset detectors, and most of
+  `config.rs`'s knobs. A **clean, segmented ingest is realistically ~half the
+  crate or less.** (Exact floor = transitive call graph of the five imported
+  functions; can be measured.)
+- **LLM-era dev cost ≈ free, but that lowers *every* option equally — including
+  fixing it cleanly upstream.** So free labor does not by itself favor
+  ingestion; it removes implementation effort from the decision and shifts the
+  weight onto the costs LLMs do **not** make free: (a) **DSP validation /
+  correctness** — proving best-in-class on real annotated corpora
+  (Q-007/Q-009/Q-013); more generated code = more regression surface, so this
+  becomes *more* necessary, not less; ingestion concentrates 100% of it on
+  Sustain, upstreaming shares it with a responsive maintainer + community;
+  (b) **divergence** from a live upstream — each future upstream improvement
+  becomes a merge-or-forgo judgment; (c) **bug ownership** — wrong outputs
+  become Sustain's, in Sustain's tree.
+- **Ingestion also removes the v1 backward-compat handcuff.** The "stay
+  additive / no public breaks" constraint exists to protect upstream's published
+  `analyze_audio` API — which Sustain does not use — and Sustain's own policy is
+  "backward-compat not important (pre-release)." Vendored, Sustain owns the
+  surface, so a **clean re-architecture and deep DSP rework** (not patching
+  inherited heuristics) becomes possible. This is the "opens interesting things"
+  angle.
+
+**User's lean (updated 2026-06-03):** moving from "A or C, upstream" toward
+**ingestion + deep, clean, segmented rework** — re-architect what we ingest and
+improve the DSP, rather than inheriting and going along with the existing
+heuristic-heavy design. Still wants whole-range quality, capability-gated
+performance, and no genre profiles. **The final call remains Codex's,** but it
+should weigh this lean seriously.
+
+**⚠ Mission tension Codex must resolve first.** This lean contradicts the current
+`AGENTS.md` mission ("improve `stratum-dsp` upstream rather than forking or
+vendoring it"; "Do not assume a fork/ingest path. Only switch to vendoring … if
+the user explicitly decides that upstream has stalled"). Upstream has **not**
+stalled (maintainer active). Choosing ingestion is therefore a deliberate
+strategy change requiring: (1) explicit user sign-off, (2) an update to
+`AGENTS.md`'s Mission + Non-Negotiables, and (3) the licensing/provenance work in
+Path B. Do not silently proceed against `AGENTS.md`.
+
+**Action for Codex:** pick the **API shape** (A/B/C) **and** the **consumption
+model** (published / fork-pin / ingest); if ingestion, resolve the mission
+tension above with the user and update `AGENTS.md`; record the decision +
+rationale here and in Q-014; then write the explicit Sustain-output contract
+(BPM, key, LUFS triplet, onset rate, STFT/chroma for band + tonalness) before any
+DSP changes.
 
 ---
 
