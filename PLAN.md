@@ -1,17 +1,62 @@
-# PLAN — stratum-dsp symphonia hygiene / 0.6 (Path A now → Path B fallback)
+# PLAN — focused upstream work now, minimal Sustain DSP ingest later
 
-> Internal planning doc (untracked — do **not** commit to any upstream PR).
+> Internal planning doc committed on the Sustain working branch for continuity.
+> Do **not** include it in any upstream PR.
 > Repo cloned from `https://github.com/HLLMR/stratum-dsp` @ `main`.
 > Consumer that motivated this: `../sustain` (do not touch; another agent works there).
 
 ---
 
-## ⮕ CURRENT NEXT STEP (2026-06-03) — DECISION FOR CODEX: Sustain integration boundary
+## DIRECTION DECISION (resolved 2026-06-04)
 
-> This is the current top priority and supersedes the symphonia-hygiene framing
-> below as *what to work on next*. The symphonia work (Path A) is already
-> implemented on the WIP branch; the open question now is **architectural and is
-> Codex's call**. Decide it before further DSP work.
+The approved direction is a deliberate split between generally useful upstream
+work and Sustain-owned product architecture.
+
+### Upstream track
+
+- Finish and submit focused changes that bring independent value to
+  `stratum-dsp` users, beginning with the narrow `symphonia` dependency-hygiene
+  and example-decoder work.
+- Submit other universal improvements separately when their scope, evidence,
+  and backward compatibility justify an upstream PR.
+- Preserve the existing v1 API by default.
+- Do **not** add a Sustain-shaped standardized primitives interface or
+  capability-driven orchestration API merely to avoid ingestion. That would
+  commit upstream to a larger semver surface designed primarily around one
+  consumer without being the value proposition of the PR.
+
+### Sustain track
+
+- Later ingest the minimal transitive DSP core Sustain actually needs for BPM,
+  key, onsets, loudness, chroma, and STFT-based features.
+- Shape the ingested code around Sustain's capability-driven analysis contract
+  and deeper DSP rework.
+- Keep Sustain-specific decoding, centered-window policy, Smart Shuffle
+  features, and Pioneer waveform behavior in Sustain.
+- Exclude unused upstream orchestration, beat-grid, waveform, ML, legacy BPM,
+  and configuration surfaces unless the measured transitive call graph proves
+  they are required.
+- Retain upstream license notices and provenance. Treat validation,
+  correctness, divergence, and bug ownership as Sustain responsibilities.
+- Do not use a long-term git-pinned fork as the destination architecture. It
+  carries divergence cost without providing the clean ownership boundary that
+  justifies ingestion.
+
+### Before deeper DSP work resumes
+
+1. Finish the narrow upstream dependency-hygiene PR.
+2. Write the exact Sustain analysis-output contract.
+3. Measure the transitive call graph from the required DSP functions.
+4. Establish benchmark baselines and manifests before restructuring or tuning
+   algorithms.
+
+This decision explicitly authorizes ingestion even though upstream is active.
+It does not authorize doing Sustain work from this repository or bundling
+Sustain-specific interfaces into upstream PRs.
+
+---
+
+## Decision Context
 
 **Why this is the priority.** This rework exists to benefit **Sustain**
 (`../sustain`), its primary consumer. A cross-repo survey on 2026-06-03 found
@@ -33,11 +78,11 @@ Sustain, because of how Sustain actually integrates.
   (integrated / short-term max / range), onset rate, low/mid/high band ratios,
   low-band variation, and tonalness — all built on stratum's LUFS / onsets /
   STFT primitives.
-- **Coupling risk:** Sustain pins **undocumented internal module paths** with no
-  semver contract; an upstream rename could silently break it. Tracked as Q-014.
+- **Coupling risk:** Sustain pins **public-but-low-level module paths** without a
+  deliberate stable contract; an upstream rename could break it. Tracked as
+  Q-014.
 
-**Decision requested of Codex — where should the stratum-dsp ↔ Sustain boundary
-sit?**
+**Options considered for the stratum-dsp ↔ Sustain boundary:**
 
 - **A. Composable full-quality primitives** — documented, semver-stable,
   individually-callable `bpm/key/onsets/loudness/chroma`, each full-quality
@@ -106,28 +151,22 @@ cost framing below:**
   inherited heuristics) becomes possible. This is the "opens interesting things"
   angle.
 
-**User's lean (updated 2026-06-03):** moving from "A or C, upstream" toward
+**User's lean (updated 2026-06-03):** moved from "A or C, upstream" toward
 **ingestion + deep, clean, segmented rework** — re-architect what we ingest and
 improve the DSP, rather than inheriting and going along with the existing
 heuristic-heavy design. Still wants whole-range quality, capability-gated
-performance, and no genre profiles. **The final call remains Codex's,** but it
-should weigh this lean seriously.
+performance, and no genre profiles.
 
-**⚠ Mission tension Codex must resolve first.** This lean contradicts the current
-`AGENTS.md` mission ("improve `stratum-dsp` upstream rather than forking or
-vendoring it"; "Do not assume a fork/ingest path. Only switch to vendoring … if
-the user explicitly decides that upstream has stalled"). Upstream has **not**
-stalled (maintainer active). Choosing ingestion is therefore a deliberate
-strategy change requiring: (1) explicit user sign-off, (2) an update to
-`AGENTS.md`'s Mission + Non-Negotiables, and (3) the licensing/provenance work in
-Path B. Do not silently proceed against `AGENTS.md`.
+**Mission tension resolved 2026-06-04.** The user explicitly approved the
+dual-track strategy: bring focused, independently valuable improvements
+upstream, and later ingest a minimal DSP core for Sustain's product-specific
+architecture. `AGENTS.md` now reflects that decision. Licensing/provenance work
+remains mandatory before ingestion.
 
-**Action for Codex:** pick the **API shape** (A/B/C) **and** the **consumption
-model** (published / fork-pin / ingest); if ingestion, resolve the mission
-tension above with the user and update `AGENTS.md`; record the decision +
-rationale here and in Q-014; then write the explicit Sustain-output contract
-(BPM, key, LUFS triplet, onset rate, STFT/chroma for band + tonalness) before any
-DSP changes.
+**Resolved API/consumption decision:** do not standardize a Sustain-shaped
+interface upstream. Sustain will own its clean capability-driven interface over
+the minimal ingested DSP core. Upstream remains the destination for focused,
+general-purpose fixes that stand on their own.
 
 ---
 
@@ -140,17 +179,11 @@ DSP changes.
 - ⇒ The "author is gone, we must ingest" trigger did **not** fire. Both paths below are
   live; this is now a deliberate choice, not a forced fallback.
 
-## DECISION (resolved) — A first, B as fallback
+## DECISION (superseded 2026-06-04) — A first, B as fallback
 
-- **Path A — upstream PR — is THE PLAN. Execute it now.** Maintainer is active; the core
-  fix is trivial and non-breaking, so it should be easy to merge.
-- **Path B — ingest into sustain — is the FALLBACK, triggered only if the PR is not
-  merged in a reasonable timeframe.** Do not start B preemptively.
-
-**Trigger for falling back to B (confirm the exact window with the user):** open the PR,
-send one polite nudge after ~1–2 weeks of silence, and if there's no merge or substantive
-engagement by ~3–4 weeks (≈ early July 2026 given a June 2026 open date), switch to
-Path B. Until that trigger fires, Path B stays untouched.
+The earlier fallback-only framing is superseded. Focused upstream work and the
+later minimal Sustain ingest are now separate approved tracks. The ingest does
+not depend on upstream stalling.
 
 License is clear for either path (`MIT OR Apache-2.0` → GPL-3.0-or-later OK with
 attribution; vendored files keep their MIT/Apache notices, not sustain's GPL header).
@@ -178,7 +211,7 @@ the dependency is **not** a breaking change.
 
 ---
 
-## Path A — upstream PR (PRIMARY — do this now)
+## Path A — focused upstream PR (PRIMARY — do this now)
 
 **Goal:** one immaculate, tightly-scoped, humble PR that (1) moves `symphonia` to
 `[dev-dependencies]` — the load-bearing fix that removes it from every downstream graph,
@@ -244,7 +277,7 @@ here.
 
 ---
 
-## Path B — ingest into sustain & tailor (FALLBACK — only if the PR stalls)
+## Path B — minimal ingest into Sustain & tailor (APPROVED LATER TRACK)
 
 **Rationale:** full control; drop the unused symphonia dependency outright (sustain feeds
 samples, so the vendored crate needs **no** decoder and **no** symphonia at all → clean

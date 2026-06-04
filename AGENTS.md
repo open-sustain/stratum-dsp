@@ -6,21 +6,26 @@ repo root unless a more specific `AGENTS.md` is added in a subdirectory.
 ## Mission
 
 This repository is the upstream `stratum-dsp` codebase used by Sustain. The
-current Sustain-driven goal is to improve `stratum-dsp` upstream rather than
-forking or vendoring it.
+approved direction is deliberately dual-track:
 
-The immediate plan is the upstream-first path documented in `PLAN.md`:
+1. Improve `stratum-dsp` upstream with focused changes that are independently
+   valuable to its general users.
+2. Later ingest the minimal transitive DSP core Sustain needs into the Sustain
+   repository for its product-specific, capability-driven architecture and
+   deeper DSP rework.
 
-1. Move `symphonia` out of normal dependencies because the library does not use
-   it.
-2. Keep the library API and behavior unchanged.
-3. Migrate the example decoders to `symphonia` 0.6 only after the dependency
-   demotion is clean.
-4. Treat deeper DSP quality work as a later upstream sequence, not part of the
-   initial dependency hygiene PR.
+Do not add a Sustain-shaped standardized or capability-orchestration API
+upstream merely to avoid ingestion. A new upstream public interface must be
+justified as a reusable `stratum-dsp` improvement on its own merits.
 
-`PLAN.md` is internal planning context and is intentionally untracked. Read it
-before starting, but do not commit it unless the user explicitly asks.
+The immediate work in this repository remains the narrow upstream dependency
+hygiene sequence documented in `PLAN.md`: demote `symphonia`, migrate the
+example decoders to `symphonia` 0.6, and submit focused universally valuable
+improvements separately. Do not begin the Sustain ingestion from this
+repository unless the user explicitly changes scope.
+
+`PLAN.md` is internal planning context committed on the Sustain working branch
+for continuity. Do not include it in an upstream PR.
 
 ## External Context
 
@@ -31,8 +36,9 @@ before starting, but do not commit it unless the user explicitly asks.
   <https://github.com/pdeljanov/Symphonia/blob/main/docs/guides/migration/0p6.md>
 
 The maintainer is responsive and welcomes API-backward-compatible improvement
-work. Do not assume a fork/ingest path. Only switch to vendoring or hard-forking
-if the user explicitly decides that upstream has stalled.
+work. Continue contributing generally useful fixes upstream. Sustain ingestion
+is an approved product-architecture decision, not a response to upstream
+stalling and not a reason to stop upstream contributions.
 
 ## Repo References
 
@@ -62,6 +68,12 @@ if the user explicitly decides that upstream has stalled.
 
 - Do not edit `../sustain` from this repository. Sustain work is separate unless
   the user explicitly changes scope.
+- Do not standardize upstream interfaces around Sustain's decoding, windowing,
+  Smart Shuffle, waveform, or capability-selection policies unless the
+  interface is independently justified for general `stratum-dsp` users.
+- The later Sustain ingest must be minimal and call-graph-driven, retain
+  upstream licensing and provenance, and exclude unused orchestration and
+  product surfaces. Perform that work in the Sustain repository, not here.
 - For the initial dependency hygiene PR, preserve the current public sample-in
   API:
   `analyze_audio(&[f32], u32, AnalysisConfig) -> Result<AnalysisResult, AnalysisError>`.
