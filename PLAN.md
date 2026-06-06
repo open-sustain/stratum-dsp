@@ -4,6 +4,8 @@
 > Do **not** include it in any upstream PR.
 > Repo cloned from `https://github.com/HLLMR/stratum-dsp` @ `main`.
 > Consumer that motivated this: `../sustain` (do not touch; another agent works there).
+> **Superseded as the live tracker by `open-sustain/sustain` issue #192** — this
+> doc is decision history; track the ingest there.
 
 ---
 

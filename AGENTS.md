@@ -20,6 +20,12 @@ justified as a reusable `stratum-dsp` improvement on its own merits.
 
 ### Decision of record
 
+> **Canonical tracking: `open-sustain/sustain` issue #192** (the DSP-ingest
+> epic). The planning docs in this repo (`AGENTS.md`, `PLAN.md`,
+> `docs/QUALITY_BACKLOG.md` Q-014) are decision history; #192 is the source of
+> truth for the ingest work, and `open-sustain/stratum-dsp@wip/dsp-rework` is the
+> ingest source of record.
+
 **2026-06-04 — dual-track (now amended).** Resolved on the Sustain working
 branch: improve `stratum-dsp` upstream with focused fixes now, ingest the
 minimal DSP core into Sustain later. See `PLAN.md` "DIRECTION DECISION" and
