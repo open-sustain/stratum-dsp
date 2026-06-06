@@ -18,11 +18,45 @@ Do not add a Sustain-shaped standardized or capability-orchestration API
 upstream merely to avoid ingestion. A new upstream public interface must be
 justified as a reusable `stratum-dsp` improvement on its own merits.
 
-The immediate work in this repository remains the narrow upstream dependency
-hygiene sequence documented in `PLAN.md`: demote `symphonia`, migrate the
-example decoders to `symphonia` 0.6, and submit focused universally valuable
-improvements separately. Do not begin the Sustain ingestion from this
-repository unless the user explicitly changes scope.
+### Decision of record
+
+**2026-06-04 — dual-track (now amended).** Resolved on the Sustain working
+branch: improve `stratum-dsp` upstream with focused fixes now, ingest the
+minimal DSP core into Sustain later. See `PLAN.md` "DIRECTION DECISION" and
+`docs/QUALITY_BACKLOG.md` Q-014.
+
+**2026-06-06 — upstream track dropped; ingest-only.** Sustain is departing from
+the published `stratum-dsp` crate. The planned upstream `symphonia`
+dependency-hygiene and example-decoder PR is not being pursued: its only
+concrete benefit to Sustain was shedding the transitive `symphonia` 0.5
+duplicate via a version bump, and ingestion removes Sustain's dependency on the
+published crate entirely, which moots that. Upstream goodwill is the only
+remaining reason and is not, by itself, enough to keep the PR on the plan.
+
+Where this goes from here:
+
+1. This `stratum-dsp` working copy has no remaining planned upstream work. Treat
+   it as the reference source for the ingest, not an active PR branch. Further
+   changes here matter only insofar as they feed the ingested core.
+2. Ingest the minimal, call-graph-driven DSP core into the Sustain repository —
+   not from this repository, and not as a long-term git-pinned fork — once the
+   prerequisites below are met.
+
+Prerequisites before the Sustain ingest begins:
+
+- the exact Sustain analysis-output contract is written;
+- the transitive call graph from the required DSP functions is measured;
+- upstream `MIT OR Apache-2.0` licensing and provenance are retained and verified;
+- benchmark baselines and manifests are established.
+
+The detailed upstream-PR sections below ("Non-Negotiables", "Scope Discipline",
+"Symphonia Migration Checks") describe the now-dropped PR and are retained as
+historical context pending a cleanup pass.
+
+The upstream dependency-hygiene PR sequence previously planned here (demote
+`symphonia`, migrate the example decoders to `symphonia` 0.6) is no longer being
+pursued as of 2026-06-06 — see "Decision of record" below. The Sustain ingestion
+is still performed in the Sustain repository, not from this one.
 
 `PLAN.md` is internal planning context committed on the Sustain working branch
 for continuity. Do not include it in an upstream PR.
